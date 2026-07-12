@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import {
   Coins,
   Plus,
@@ -983,6 +984,7 @@ export default function App() {
       <>
         <BackgroundBlobs />
         <SkeletonScreen />
+        <Analytics />
       </>
     );
   }
@@ -992,6 +994,7 @@ export default function App() {
       <>
         <BackgroundBlobs />
         <AuthScreen theme={theme} setTheme={setTheme} />
+        <Analytics />
       </>
     );
   }
@@ -1001,21 +1004,25 @@ export default function App() {
       <>
         <BackgroundBlobs />
         <GroupGate user={user} theme={theme} setTheme={setTheme} onGroupReady={setActiveGroup} />
+        <Analytics />
       </>
     );
   }
 
   return (
-    <GroupApp
-      user={user}
-      groupId={activeGroup}
-      theme={theme}
-      setTheme={setTheme}
-      onSwitchGroup={() => {
-        saveLS(ACTIVE_GROUP_KEY, null);
-        setActiveGroup(null);
-      }}
+    <>
+      <GroupApp
+        user={user}
+        groupId={activeGroup}
+        theme={theme}
+        setTheme={setTheme}
+        onSwitchGroup={() => {
+          saveLS(ACTIVE_GROUP_KEY, null);
+          setActiveGroup(null);
+        }}
     />
+      <Analytics />
+    </>
   );
 }
 
