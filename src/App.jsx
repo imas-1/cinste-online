@@ -24,6 +24,12 @@ import {
   UserPlus,
   Mail,
   Lock,
+  ArrowLeftRight,
+  MessageCircle,
+  ArrowUpDown,
+  Download,
+  QrCode,
+  Ban,
 } from "lucide-react";
 import { db, auth, googleProvider, getMessagingIfSupported, VAPID_KEY } from "./firebase";
 import { ref, onValue, set, push, remove, get } from "firebase/database";
@@ -166,6 +172,10 @@ function photosOf(e) {
   if (e.photos && e.photos.length) return e.photos;
   if (e.photo) return [e.photo];
   return [];
+}
+
+function haptic(ms = 10) {
+  if (navigator.vibrate) navigator.vibrate(ms);
 }
 
 function playChime() {
@@ -462,6 +472,28 @@ function useTheme() {
   return [theme, setTheme];
 }
 
+function SkeletonScreen({ label }) {
+  return (
+    <div className="min-h-screen px-5 pt-8 animate-fadein">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+        <div className="flex-1">
+          <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+          <div className="h-5 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="h-20 rounded-2xl bg-gray-200 dark:bg-gray-700 animate-pulse" />
+        <div className="h-20 rounded-2xl bg-gray-200 dark:bg-gray-700 animate-pulse" />
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="h-16 rounded-2xl bg-gray-200 dark:bg-gray-700 animate-pulse mb-2" />
+      ))}
+      {label && <p className="text-center text-xs text-gray-400 mt-4">{label}</p>}
+    </div>
+  );
+}
+
 function ThemeToggle({ theme, setTheme }) {
   return (
     <button
@@ -544,10 +576,8 @@ function AuthScreen({ theme, setTheme }) {
       <div className="absolute top-5 right-5">
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/40 mb-4 animate-popin">
-        <Coins size={30} className="text-white" />
-      </div>
-      <h1 className="text-3xl font-extrabold">Caietul de cinste</h1>
+      <img src="/icon.png" alt="Faci cinste?" className="w-20 h-20 rounded-2xl shadow-lg shadow-amber-500/40 mb-4 animate-popin" />
+      <h1 className="text-3xl font-extrabold">Faci cinste? 😉</h1>
       <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 text-center max-w-xs">
         {mode === "signup" ? "Creează-ți un cont ca să te alături unui grup." : "Intră în cont ca să vezi grupurile tale."}
       </p>
@@ -686,9 +716,15 @@ function translateAuthError(code) {
 
 function GroupGate({ user, theme, setTheme, onGroupReady }) {
   const [myGroups, setMyGroups] = useState(null); // null = loading
-  const [mode, setMode] = useState("pick"); // pick | create | join
+  const [mode, setMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("join") ? "join" : "pick";
+  });
   const [groupName, setGroupName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
+  const [joinCode, setJoinCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("join") || "").toUpperCase();
+  });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -778,7 +814,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
 
   if (myGroups === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">se încarcă…</div>
+      <SkeletonScreen label="se conectează la grupurile tale…" />
     );
   }
 
@@ -793,9 +829,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
           <LogOut size={15} />
         </button>
       </div>
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/40 mb-4 animate-popin">
-        <Users size={28} className="text-white" />
-      </div>
+      <img src="/icon.png" alt="Faci cinste?" className="w-20 h-20 rounded-2xl shadow-lg shadow-amber-500/40 mb-4 animate-popin" />
       <h1 className="text-2xl font-extrabold">Salut, {user.displayName}</h1>
 
       {mode === "pick" && (
@@ -923,9 +957,7 @@ export default function App() {
     return (
       <>
         <BackgroundBlobs />
-        <div className="min-h-screen flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
-          se încarcă…
-        </div>
+        <SkeletonScreen />
       </>
     );
   }
@@ -967,6 +999,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   const [groupMembers, setGroupMembers] = useState({});
   const [pendingMembers, setPendingMembers] = useState({});
   const [showProfile, setShowProfile] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [entries, setEntries] = useState([]);
   const [connected, setConnected] = useState(false);
   const [showAddEntry, setShowAddEntry] = useState(false);
@@ -984,6 +1017,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   const [editingEntry, setEditingEntry] = useState(null);
   const [notifOn, setNotifOn] = useState(false);
   const [statsPeriod, setStatsPeriod] = useState("month");
+  const [sortBy, setSortBy] = useState("date");
 
   const [form, setForm] = useState({ amount: "", targets: [], note: "", type: "cinste", photos: [], includeMe: false });
 
@@ -1003,7 +1037,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
       (snap) => {
         setConnected(true);
         const v = snap.val();
-        setGroupInfo(v ? { name: v.name, inviteCode: v.inviteCode } : null);
+        setGroupInfo(v ? { name: v.name, inviteCode: v.inviteCode, goal: v.goal || null } : null);
         setGroupMembers(v?.members || {});
         setPendingMembers(v?.pendingMembers || {});
       },
@@ -1109,6 +1143,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   const me = groupMembers[user.uid]?.name || user.displayName;
   const myRole = groupMembers[user.uid]?.role || "member";
   const isAdmin = myRole === "admin";
+  const amBlocked = !!groupMembers[user.uid]?.blocked;
   const members = Object.values(groupMembers).map((m) => m.name);
   const others = members.filter((m) => m !== me);
 
@@ -1132,7 +1167,33 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     }
   }
 
+  async function setGroupGoal(count) {
+    try {
+      await set(ref(db, `groups/${groupId}/goal`), count > 0 ? count : null);
+    } catch (e) {
+      setErr("Nu am putut salva obiectivul: " + e.message);
+    }
+  }
+
+  async function promoteToAdmin(uid) {
+    try {
+      await set(ref(db, `groups/${groupId}/members/${uid}/role`), "admin");
+    } catch (e) {
+      setErr("Nu am putut acorda rolul de admin: " + e.message);
+    }
+  }
+
+  async function toggleBlockMember(uid) {
+    try {
+      const current = groupMembers[uid]?.blocked;
+      await set(ref(db, `groups/${groupId}/members/${uid}/blocked`), !current);
+    } catch (e) {
+      setErr("Nu am putut actualiza statusul: " + e.message);
+    }
+  }
+
   async function approveMember(uid) {
+    haptic(15);
     try {
       const req = pendingMembers[uid];
       await set(ref(db, `groups/${groupId}/members/${uid}`), {
@@ -1165,7 +1226,26 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     }
   }
 
+  async function submitFeedback(type, message) {
+    try {
+      await push(ref(db, "feedback"), {
+        type,
+        message,
+        from: user.email || me,
+        groupId,
+        date: Date.now(),
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function submitEntry() {
+    if (amBlocked) {
+      setErr("Contul tău a fost blocat de un admin al grupului.");
+      return;
+    }
     const amt = parseFloat(form.amount);
     if (!amt || amt <= 0) {
       setErr("Introdu o sumă validă.");
@@ -1236,6 +1316,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   }
 
   async function toggleReaction(entryId, emoji) {
+    haptic(8);
     try {
       const path = `groups/${groupId}/entries/${entryId}/reactions/${emoji}/${user.uid}`;
       const snap = await get(ref(db, path));
@@ -1247,8 +1328,20 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     } catch (e) {}
   }
 
+  async function addComment(entryId, text) {
+    if (!text.trim()) return;
+    try {
+      await push(ref(db, `groups/${groupId}/entries/${entryId}/comments`), {
+        text: text.trim(),
+        author: me,
+        date: Date.now(),
+      });
+    } catch (e) {}
+  }
+
   async function settleWithMember(otherName, netFromMyPerspective) {
     if (netFromMyPerspective === 0) return;
+    haptic(15);
     const amount = Math.abs(netFromMyPerspective);
     const from = netFromMyPerspective < 0 ? me : otherName;
     const to = netFromMyPerspective < 0 ? otherName : me;
@@ -1273,9 +1366,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     return (
       <>
         <BackgroundBlobs />
-        <div className="min-h-screen flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
-          se încarcă grupul…
-        </div>
+        <SkeletonScreen label="se încarcă grupul…" />
       </>
     );
   }
@@ -1343,6 +1434,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
                   confirmDeleteEntry={confirmDeleteEntry}
                   setConfirmDeleteEntry={setConfirmDeleteEntry}
                   onReact={toggleReaction}
+                  onComment={addComment}
                   myUid={user.uid}
                   delay={i * 40}
                 />
@@ -1358,8 +1450,11 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     );
   }
 
-  const received = entries.filter((e) => e.to === me);
-  const given = entries.filter((e) => e.from === me);
+  const receivedRaw = entries.filter((e) => e.to === me);
+  const givenRaw = entries.filter((e) => e.from === me);
+  const sortFn = sortBy === "value" ? (a, b) => b.amount - a.amount : (a, b) => (b.date || 0) - (a.date || 0);
+  const received = receivedRaw.slice().sort(sortFn);
+  const given = givenRaw.slice().sort(sortFn);
   const receivedThisMonth = monthEntries(received);
   const givenThisMonth = monthEntries(given);
   const totalReceivedMonth = receivedThisMonth.reduce((s, e) => s + e.amount, 0);
@@ -1399,6 +1494,13 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
                 </span>
               )}
               {saveStatus === "error" && <span className="text-[11px] text-red-600">eroare</span>}
+              <button
+                onClick={onSwitchGroup}
+                title="Schimbă grupul"
+                className="p-2 rounded-full border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 active:scale-90 transition-transform"
+              >
+                <ArrowLeftRight size={15} />
+              </button>
               <ThemeToggle theme={theme} setTheme={setTheme} />
               <button
                 onClick={toggleNotif}
@@ -1494,6 +1596,27 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
           </div>
         )}
 
+        <div className="px-5 mt-7 flex items-center gap-2">
+          <ArrowUpDown size={13} className="text-gray-400" />
+          <span className="text-xs text-gray-500 dark:text-gray-400">Sortează:</span>
+          <button
+            onClick={() => setSortBy("date")}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              sortBy === "date" ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "border-gray-200 dark:border-gray-700 text-gray-500"
+            }`}
+          >
+            Dată
+          </button>
+          <button
+            onClick={() => setSortBy("value")}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              sortBy === "value" ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "border-gray-200 dark:border-gray-700 text-gray-500"
+            }`}
+          >
+            Valoare
+          </button>
+        </div>
+
         <Section
           title="Cinste primită"
           icon={<Coins size={16} />}
@@ -1502,6 +1625,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
           deleteEntry={null}
           onPhoto={setLightbox}
           onReact={toggleReaction}
+                  onComment={addComment}
           myUid={user.uid}
         />
 
@@ -1516,40 +1640,41 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
           confirmDeleteEntry={confirmDeleteEntry}
           setConfirmDeleteEntry={setConfirmDeleteEntry}
           onReact={toggleReaction}
+                  onComment={addComment}
           myUid={user.uid}
           givenView
         />
 
-        <div className="px-5 mt-6 grid grid-cols-4 gap-2">
+        <div className="fixed bottom-0 inset-x-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] grid grid-cols-4 gap-2">
           <button
             onClick={() => setShowStats(true)}
-            className="flex flex-col items-center justify-center gap-1 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800 rounded-xl py-3 hover:bg-violet-100 transition-colors active:scale-95"
+            className="flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-violet-700 dark:text-violet-300 py-1.5 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors active:scale-95"
           >
-            <Award size={16} /> Clasament
+            <Award size={18} /> Clasament
           </button>
           <button
             onClick={() => setShowWheel(true)}
-            className="flex flex-col items-center justify-center gap-1 text-xs font-medium text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-900/30 border border-pink-200 dark:border-pink-800 rounded-xl py-3 hover:bg-pink-100 transition-colors active:scale-95"
+            className="flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-pink-700 dark:text-pink-300 py-1.5 rounded-xl hover:bg-pink-50 dark:hover:bg-pink-900/30 transition-colors active:scale-95"
           >
-            <Dices size={16} /> Roata
+            <Dices size={18} /> Roata
           </button>
           <button
             onClick={() => setShowCalendar(true)}
-            className="flex flex-col items-center justify-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl py-3 hover:bg-blue-100 transition-colors active:scale-95"
+            className="flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 py-1.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors active:scale-95"
           >
-            <CalendarIcon size={16} /> Calendar
+            <CalendarIcon size={18} /> Calendar
           </button>
           <button
             onClick={() => exportCSV(entries)}
-            className="flex flex-col items-center justify-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white/70 dark:bg-gray-800/70 border border-gray-200 dark:border-gray-700 rounded-xl py-3 hover:bg-gray-50 transition-colors active:scale-95"
+            className="flex flex-col items-center justify-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-300 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors active:scale-95"
           >
-            ⬇️ Export
+            <Download size={18} /> Export
           </button>
         </div>
 
         <button
           onClick={() => setShowAddEntry(true)}
-          className="pulse-ring fixed bottom-6 right-6 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 transition-transform"
+          className="pulse-ring fixed bottom-24 right-6 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg shadow-amber-500/40 active:scale-90 transition-transform z-20"
           aria-label="Adaugă cinste"
         >
           <Plus size={26} />
@@ -1563,7 +1688,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
         {editingEntry && (
           <EditAmountModal entry={editingEntry} onSave={(amt) => editEntryAmount(editingEntry.id, amt)} onClose={() => setEditingEntry(null)} />
         )}
-        {showStats && <StatsScreen members={members} entries={entries} onClose={() => setShowStats(false)} />}
+        {showStats && <StatsScreen members={members} entries={entries} groupGoal={groupInfo.goal} onClose={() => setShowStats(false)} />}
         {showWheel && <WheelModal members={members} onClose={() => setShowWheel(false)} />}
         {showCalendar && <CalendarModal entries={entries} onClose={() => setShowCalendar(false)} onPhoto={setLightbox} />}
         {showGroupPanel && (
@@ -1577,6 +1702,9 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
             onRemoveMember={removeMember}
             onApproveMember={approveMember}
             onRejectMember={rejectMember}
+            onPromoteAdmin={promoteToAdmin}
+            onToggleBlock={toggleBlockMember}
+            onSetGoal={setGroupGoal}
             confirmDeleteMember={confirmDeleteMember}
             setConfirmDeleteMember={setConfirmDeleteMember}
             onRegenerateCode={regenerateInviteCode}
@@ -1586,11 +1714,16 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
               setShowGroupPanel(false);
               setShowProfile(true);
             }}
+            onOpenAbout={() => {
+              setShowGroupPanel(false);
+              setShowAbout(true);
+            }}
           />
         )}
         {showProfile && (
           <ProfileModal currentName={me} onSave={updateMyName} onClose={() => setShowProfile(false)} />
         )}
+        {showAbout && <AboutModal onClose={() => setShowAbout(false)} onSubmitFeedback={submitFeedback} />}
       </div>
     </>
   );
@@ -1606,19 +1739,26 @@ function GroupPanel({
   onRemoveMember,
   onApproveMember,
   onRejectMember,
+  onPromoteAdmin,
+  onToggleBlock,
+  onSetGoal,
   confirmDeleteMember,
   setConfirmDeleteMember,
   onRegenerateCode,
   onSwitchGroup,
   onLogout,
   onOpenProfile,
+  onOpenAbout,
 }) {
   const [copied, setCopied] = useState(false);
+  const [goalInput, setGoalInput] = useState(groupInfo.goal || "");
+  const [showQR, setShowQR] = useState(false);
 
   function copyCode() {
     try {
       navigator.clipboard.writeText(groupInfo.inviteCode);
       setCopied(true);
+      haptic(10);
       setTimeout(() => setCopied(false), 1500);
     } catch (e) {}
   }
@@ -1644,12 +1784,57 @@ function GroupPanel({
           >
             {copied ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
           </button>
+          <button
+            onClick={() => setShowQR((s) => !s)}
+            className={`p-2.5 rounded-xl border transition-transform active:scale-90 ${
+              showQR ? "border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-900/30" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300"
+            }`}
+          >
+            <QrCode size={18} />
+          </button>
         </div>
+        {showQR && (
+          <div className="flex flex-col items-center mb-4 animate-popin">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+                `${window.location.origin}/?join=${groupInfo.inviteCode}`
+              )}`}
+              alt="Cod QR invitație"
+              className="rounded-2xl border border-gray-200 dark:border-gray-700"
+              width={180}
+              height={180}
+            />
+            <p className="text-[11px] text-gray-400 mt-2 text-center">Scanează cu telefonul ca să deschizi direct ecranul de alăturare</p>
+          </div>
+        )}
         <p className="text-xs text-gray-400 mb-4">Trimite codul ăsta cuiva ca să se alăture grupului.</p>
         {isAdmin && (
           <button onClick={onRegenerateCode} className="text-xs text-amber-600 dark:text-amber-400 underline mb-5">
             Generează cod nou (îl invalidează pe cel vechi)
           </button>
+        )}
+
+        {isAdmin && (
+          <div className="mb-5">
+            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              🎯 Obiectiv de grup (nr. de cinste)
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={goalInput}
+                onChange={(e) => setGoalInput(e.target.value)}
+                placeholder="ex: 100"
+                className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+              />
+              <button
+                onClick={() => onSetGoal(parseInt(goalInput) || 0)}
+                className="text-sm font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-xl px-4"
+              >
+                Salvează
+              </button>
+            </div>
+          </div>
         )}
 
         {isAdmin && Object.keys(pendingMembers || {}).length > 0 && (
@@ -1702,6 +1887,11 @@ function GroupPanel({
                     <Shield size={10} /> admin
                   </span>
                 )}
+                {m.blocked && (
+                  <span className="text-[10px] uppercase tracking-wide bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 px-1.5 py-0.5 rounded">
+                    blocat
+                  </span>
+                )}
               </span>
               {isAdmin && uid !== myUid && (
                 confirmDeleteMember === uid ? (
@@ -1714,9 +1904,27 @@ function GroupPanel({
                     </button>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmDeleteMember(uid)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {m.role !== "admin" && (
+                      <button
+                        onClick={() => onPromoteAdmin(uid)}
+                        title="Fă admin"
+                        className="text-gray-300 hover:text-amber-500 transition-colors p-1"
+                      >
+                        <Shield size={15} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onToggleBlock(uid)}
+                      title={m.blocked ? "Deblochează" : "Blochează"}
+                      className={`transition-colors p-1 ${m.blocked ? "text-red-500" : "text-gray-300 hover:text-red-500"}`}
+                    >
+                      <Ban size={15} />
+                    </button>
+                    <button onClick={() => setConfirmDeleteMember(uid)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 )
               )}
             </div>
@@ -1730,7 +1938,7 @@ function GroupPanel({
           ✏️ Editează profilul meu
         </button>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-3">
           <button
             onClick={onSwitchGroup}
             className="flex-1 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-xl py-2.5"
@@ -1741,6 +1949,10 @@ function GroupPanel({
             Ieși din cont
           </button>
         </div>
+
+        <button onClick={onOpenAbout} className="w-full text-center text-xs text-gray-400 underline">
+          Despre aplicație · Confidențialitate · Termeni · Raportează o problemă
+        </button>
       </div>
     </div>
   );
@@ -1782,7 +1994,7 @@ function ProfileModal({ currentName, onSave, onClose }) {
 }
 
 
-function EntryCard({ e, me, deleteEntry, onPhoto, onEdit, confirmDeleteEntry, setConfirmDeleteEntry, onReact, myUid, delay = 0 }) {
+function EntryCard({ e, me, deleteEntry, onPhoto, onEdit, confirmDeleteEntry, setConfirmDeleteEntry, onReact, onComment, myUid, delay = 0 }) {
   const isReceived = e.to === me;
   const other = isReceived ? e.from : e.to;
   const photos = photosOf(e);
@@ -1869,47 +2081,100 @@ function EntryCard({ e, me, deleteEntry, onPhoto, onEdit, confirmDeleteEntry, se
         )}
       </div>
       </div>
-      {onReact && myUid && <ReactionBar entry={e} onReact={onReact} myUid={myUid} />}
+      {onReact && myUid && <ReactionBar entry={e} onReact={onReact} onComment={onComment} myUid={myUid} me={me} />}
     </div>
   );
 }
 
-function ReactionBar({ entry, onReact, myUid }) {
+function ReactionBar({ entry, onReact, onComment, myUid, me }) {
   const EMOJIS = ["😂", "🔥", "👍", "❤️"];
   const reactions = entry.reactions || {};
+  const comments = entry.comments ? Object.entries(entry.comments) : [];
+  const [showComments, setShowComments] = useState(false);
+  const [text, setText] = useState("");
+
   return (
-    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/60">
-      {EMOJIS.map((emo) => {
-        const users = reactions[emo] || {};
-        const count = Object.keys(users).length;
-        const active = !!users[myUid];
-        return (
+    <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/60">
+      <div className="flex items-center gap-1.5">
+        {EMOJIS.map((emo) => {
+          const users = reactions[emo] || {};
+          const count = Object.keys(users).length;
+          const active = !!users[myUid];
+          return (
+            <button
+              key={emo}
+              onClick={() => onReact(entry.id, emo)}
+              className={`text-xs px-2 py-1 rounded-full border flex items-center gap-1 transition-all active:scale-90 ${
+                active
+                  ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30"
+                  : "border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-gray-400"
+              }`}
+            >
+              <span>{emo}</span>
+              {count > 0 && <span className="text-[10px]">{count}</span>}
+            </button>
+          );
+        })}
+        {onComment && (
           <button
-            key={emo}
-            onClick={() => onReact(entry.id, emo)}
-            className={`text-xs px-2 py-1 rounded-full border flex items-center gap-1 transition-all active:scale-90 ${
-              active
-                ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30"
-                : "border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-gray-400"
-            }`}
+            onClick={() => setShowComments((s) => !s)}
+            className="text-xs px-2 py-1 rounded-full border border-transparent hover:border-gray-200 dark:hover:border-gray-700 text-gray-400 flex items-center gap-1 transition-all active:scale-90 ml-auto"
           >
-            <span>{emo}</span>
-            {count > 0 && <span className="text-[10px]">{count}</span>}
+            <MessageCircle size={13} />
+            {comments.length > 0 && <span className="text-[10px]">{comments.length}</span>}
           </button>
-        );
-      })}
+        )}
+      </div>
+
+      {showComments && onComment && (
+        <div className="mt-2 space-y-1.5 animate-fadein">
+          {comments.map(([id, c]) => (
+            <div key={id} className="text-xs bg-gray-50 dark:bg-gray-800 rounded-lg px-2.5 py-1.5">
+              <span className="font-medium">{c.author}:</span> {c.text}
+            </div>
+          ))}
+          <div className="flex gap-1.5">
+            <input
+              value={text}
+              onChange={(ev) => setText(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" && text.trim()) {
+                  onComment(entry.id, text);
+                  setText("");
+                }
+              }}
+              placeholder="Scrie un comentariu…"
+              className="flex-1 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-500"
+            />
+            <button
+              onClick={() => {
+                if (text.trim()) {
+                  onComment(entry.id, text);
+                  setText("");
+                }
+              }}
+              className="text-xs text-amber-600 dark:text-amber-400 font-medium px-2"
+            >
+              Trimite
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Section({ title, icon, empty, items, deleteEntry, givenView, onPhoto, onEdit, confirmDeleteEntry, setConfirmDeleteEntry, onReact, myUid }) {
+function Section({ title, icon, empty, items, deleteEntry, givenView, onPhoto, onEdit, confirmDeleteEntry, setConfirmDeleteEntry, onReact, onComment, myUid }) {
   return (
     <div className="px-5 mt-7">
       <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-3">
         {icon} {title}
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">{empty}</p>
+        <div className="flex flex-col items-center text-center py-6 opacity-70">
+          <span className="text-4xl mb-2">🧾</span>
+          <p className="text-sm text-gray-400 italic">{empty}</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {items.map((e, i) => (
@@ -1923,6 +2188,7 @@ function Section({ title, icon, empty, items, deleteEntry, givenView, onPhoto, o
               confirmDeleteEntry={confirmDeleteEntry}
               setConfirmDeleteEntry={setConfirmDeleteEntry}
               onReact={onReact}
+              onComment={onComment}
               myUid={myUid}
               delay={i * 40}
             />
@@ -2188,11 +2454,16 @@ function EditAmountModal({ entry, onSave, onClose }) {
   );
 }
 
-function StatsScreen({ members, entries, onClose }) {
+function StatsScreen({ members, entries, groupGoal, onClose }) {
   const stats = computeStats(members, entries);
   const monthStats = computeStats(members, monthEntries(entries));
   const now = new Date();
   const monthName = now.toLocaleDateString("ro-RO", { month: "long" });
+
+  const cinsteEntries = entries.filter((e) => e.type === "cinste");
+  const totalGroupSpent = cinsteEntries.reduce((s, e) => s + e.amount, 0);
+  const avgValue = cinsteEntries.length > 0 ? totalGroupSpent / cinsteEntries.length : 0;
+  const goalProgress = groupGoal ? Math.min(100, Math.round((cinsteEntries.length / groupGoal) * 100)) : null;
 
   const winners = BADGES.map((b) => {
     const w = b.pick(stats);
@@ -2216,6 +2487,32 @@ function StatsScreen({ members, entries, onClose }) {
           </button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">se actualizează live, pe baza istoricului vostru</p>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Total grup</p>
+            <p className="text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">{formatAmount(totalGroupSpent)} lei</p>
+          </div>
+          <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Medie / cinste</p>
+            <p className="text-xl font-extrabold text-gray-700 dark:text-gray-200 mt-0.5">{formatAmount(avgValue)} lei</p>
+          </div>
+        </div>
+
+        {goalProgress !== null && (
+          <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 mb-5">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-400">🎯 Obiectiv: {groupGoal} cinste</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">{cinsteEntries.length}/{groupGoal}</p>
+            </div>
+            <div className="h-2 rounded-full bg-amber-100 dark:bg-amber-900/40 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-700"
+                style={{ width: `${goalProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {monthlyWinners.length > 0 && (
           <>
@@ -2559,6 +2856,145 @@ function CalendarModal({ entries, onClose, onPhoto }) {
                 })}
               </div>
             )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ABOUT_TABS = ["Despre", "Confidențialitate", "Termeni", "Raportează / Feedback"];
+
+function AboutModal({ onClose, onSubmitFeedback }) {
+  const [tab, setTab] = useState(0);
+  const [feedbackType, setFeedbackType] = useState("bug");
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
+
+  async function handleSubmit() {
+    if (!message.trim()) return;
+    const ok = await onSubmitFeedback(feedbackType, message.trim());
+    if (ok) {
+      setSent(true);
+      setMessage("");
+      setTimeout(() => setSent(false), 3000);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end sm:items-center justify-center animate-fadein">
+      <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-t-3xl sm:rounded-3xl w-full max-w-md p-5 pb-8 max-h-[88vh] overflow-y-auto animate-slideup shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Faci cinste? 😉</h2>
+          <button onClick={onClose} className="text-gray-400">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex gap-1 mb-4 overflow-x-auto">
+          {ABOUT_TABS.map((t, i) => (
+            <button
+              key={t}
+              onClick={() => setTab(i)}
+              className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors ${
+                tab === i
+                  ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                  : "border-gray-200 dark:border-gray-700 text-gray-500"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {tab === 0 && (
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-3 leading-relaxed">
+            <p>
+              <strong>Faci cinste? 😉</strong> e o aplicație pentru grupuri de prieteni care țin evidența cine face cinste cui,
+              cât și când — fără să mai calculați manual cine cât datorează.
+            </p>
+            <p>Funcții: cinste împărțite, rambursări, poze, calendar, roata norocului, clasamente și premii lunare.</p>
+            <p className="text-xs text-gray-400">Versiune aplicație: 1.0</p>
+          </div>
+        )}
+
+        {tab === 1 && (
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-3 leading-relaxed">
+            <p>
+              <strong>Ce date colectăm:</strong> emailul și numele tău (pentru cont), numele grupurilor din care faci parte,
+              cinstele pe care le înregistrezi (cine, cui, cât, notă, poze opționale).
+            </p>
+            <p>
+              <strong>Unde stau datele:</strong> într-o bază de date Firebase (Google), accesibilă doar membrilor grupurilor
+              din care faci parte.
+            </p>
+            <p>
+              <strong>Ce NU facem:</strong> nu vindem datele tale, nu le folosim pentru publicitate, nu le distribuim către
+              terți în afara funcționării aplicației.
+            </p>
+            <p>
+              <strong>Ștergerea contului:</strong> poți cere oricând ștergerea completă a datelor tale contactând
+              administratorul aplicației.
+            </p>
+            <p className="text-xs text-gray-400">
+              Acesta e un text simplu, orientativ — nu înlocuiește o politică de confidențialitate redactată juridic dacă
+              publici aplicația la scară mare.
+            </p>
+          </div>
+        )}
+
+        {tab === 2 && (
+          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-3 leading-relaxed">
+            <p>Folosind această aplicație, ești de acord că:</p>
+            <p>1. Ești responsabil pentru acuratețea sumelor și tranzacțiilor pe care le introduci.</p>
+            <p>2. Aplicația e un instrument de evidență, nu procesează plăți reale — banii se dau/primesc în afara aplicației.</p>
+            <p>3. Nu vom fi răspunzători pentru neînțelegeri financiare între membrii unui grup.</p>
+            <p>4. Ne rezervăm dreptul de a suspenda conturi care abuzează de aplicație (spam, conținut nepotrivit în poze/note).</p>
+            <p className="text-xs text-gray-400">
+              Text orientativ — pentru o lansare comercială reală, recomand o variantă redactată de un jurist.
+            </p>
+          </div>
+        )}
+
+        {tab === 3 && (
+          <div>
+            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Tip</p>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setFeedbackType("bug")}
+                className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${
+                  feedbackType === "bug"
+                    ? "border-red-400 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                    : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+                }`}
+              >
+                🐞 Raportează un bug
+              </button>
+              <button
+                onClick={() => setFeedbackType("feedback")}
+                className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${
+                  feedbackType === "feedback"
+                    ? "border-blue-400 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                    : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+                }`}
+              >
+                💬 Feedback / idee
+              </button>
+            </div>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={feedbackType === "bug" ? "Ce nu a mers cum trebuia?" : "Ce idee ai vrea să vezi în aplicație?"}
+              rows={4}
+              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 mb-3 resize-none"
+            />
+            {sent && <p className="text-xs text-green-600 mb-2">Trimis, mulțumim! 🙏</p>}
+            <button
+              onClick={handleSubmit}
+              className="w-full bg-gradient-to-br from-amber-400 to-orange-500 text-white font-semibold rounded-xl py-2.5 active:scale-95 transition-transform"
+            >
+              Trimite
+            </button>
           </div>
         )}
       </div>

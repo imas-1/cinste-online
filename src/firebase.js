@@ -14,7 +14,7 @@ const firebaseConfig = {
 };
 
 // cheia publică (VAPID) generată în Firebase Console → Cloud Messaging → Web Push certificates
-export const VAPID_KEY = "BJ3LRSyaynrmUTShz6ENk2Ao6Yjvh90DIh5YWfCk2GU";
+export const VAPID_KEY = "BM3ibJgYonwDJfQNs0vdQCZf9OGr3swd4WUg1z-k_DU5zCmONDj2kuiWIkHKNQpKkpbAoyal_79q0vQNf-pUDsM";
 
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
