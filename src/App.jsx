@@ -67,16 +67,41 @@ function colorFor(name) {
   return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
 }
 
-function Avatar({ name, size = 10 }) {
+let avatarMetaStore = {};
+function setAvatarMeta(map) {
+  avatarMetaStore = map;
+}
+
+const AVATAR_COLOR_SWATCHES = [
+  "#f59e0b", "#f43f5e", "#8b5cf6", "#3b82f6", "#10b981", "#ec4899", "#84cc16", "#06b6d4",
+];
+const AVATAR_EMOJIS = ["😎", "🦊", "🐱", "🐶", "🐼", "🦁", "🐨", "🐸", "🦄", "🐵", "🧑‍🚀", "🥷"];
+
+function Avatar({ name, size = 10, photo, color, emoji }) {
+  const meta = avatarMetaStore[name] || {};
+  photo = photo || meta.photo;
+  color = color || meta.color;
+  emoji = emoji || meta.emoji;
   const initial = name?.[0]?.toUpperCase() || "?";
+  const px = size * 4;
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt={name}
+        loading="lazy"
+        className="shrink-0 rounded-full object-cover shadow-sm"
+        style={{ width: px, height: px }}
+      />
+    );
+  }
+  const bgStyle = color ? { backgroundColor: color, width: px, height: px, fontSize: size * 1.4 } : { width: px, height: px, fontSize: size * 1.4 };
   return (
     <div
-      className={`shrink-0 rounded-full bg-gradient-to-br ${colorFor(
-        name
-      )} flex items-center justify-center text-white font-bold shadow-sm`}
-      style={{ width: size * 4, height: size * 4, fontSize: size * 1.4 }}
+      className={`shrink-0 rounded-full ${color ? "" : `bg-gradient-to-br ${colorFor(name)}`} flex items-center justify-center text-white font-bold shadow-sm`}
+      style={bgStyle}
     >
-      {initial}
+      {emoji || initial}
     </div>
   );
 }
@@ -1001,6 +1026,8 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [entries, setEntries] = useState([]);
+  const [deletedEntries, setDeletedEntries] = useState([]);
+  const [showTrash, setShowTrash] = useState(false);
   const [connected, setConnected] = useState(false);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [confirmDeleteMember, setConfirmDeleteMember] = useState(null);
@@ -1021,7 +1048,6 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
 
   const [form, setForm] = useState({ amount: "", targets: [], note: "", type: "cinste", photos: [], includeMe: false });
 
-  const prevEntryIdsRef = useRef(null);
   const membersRef = ref(db, `groups/${groupId}/members`);
   const entriesRef = ref(db, `groups/${groupId}/entries`);
 
@@ -1030,6 +1056,14 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     const t = setTimeout(() => setErr(""), 4500);
     return () => clearTimeout(t);
   }, [err]);
+
+  useEffect(() => {
+    const map = {};
+    Object.values(groupMembers).forEach((m) => {
+      map[m.name] = { photo: m.photo, color: m.color, emoji: m.emoji };
+    });
+    setAvatarMeta(map);
+  }, [groupMembers]);
 
   useEffect(() => {
     const unsub = onValue(
@@ -1054,9 +1088,13 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
       entriesRef,
       (snap) => {
         const val = snap.val() || {};
-        const list = Object.entries(val).map(([id, e]) => ({ id, ...e }));
-        list.sort((a, b) => (b.date || 0) - (a.date || 0));
-        setEntries(list);
+        const all = Object.entries(val).map(([id, e]) => ({ id, ...e }));
+        const active = all.filter((e) => !e.deleted);
+        const deleted = all.filter((e) => e.deleted);
+        active.sort((a, b) => (b.date || 0) - (a.date || 0));
+        deleted.sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+        setEntries(active);
+        setDeletedEntries(deleted);
       },
       (e) => {
         setErr("Eroare la citirea cinstelor: " + e.message);
@@ -1068,28 +1106,6 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   useEffect(() => {
     setNotifOn(loadLS(`cinsteNotif:${user.uid}`, false));
   }, [user.uid]);
-
-  useEffect(() => {
-    const currentIds = new Set(entries.map((e) => e.id));
-    const myName = groupMembers[user.uid]?.name;
-    if (prevEntryIdsRef.current && myName) {
-      entries.forEach((e) => {
-        if (
-          e.to === myName &&
-          e.from !== myName &&
-          !prevEntryIdsRef.current.has(e.id) &&
-          notifOn &&
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          try {
-            new Notification("Cinste nouă! 🎉", { body: `${e.from} ți-a făcut cinste de ${formatAmount(e.amount)} lei` });
-          } catch (err) {}
-        }
-      });
-    }
-    prevEntryIdsRef.current = currentIds;
-  }, [entries, notifOn, groupMembers, user.uid]);
 
   async function toggleNotif() {
     const next = !notifOn;
@@ -1106,7 +1122,11 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
         const swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
         if (token) {
-          await push(ref(db, `users/${user.uid}/fcmTokens`), token);
+          const snap = await get(ref(db, `users/${user.uid}/fcmTokens`));
+          const existing = Object.values(snap.val() || {});
+          if (!existing.includes(token)) {
+            await push(ref(db, `users/${user.uid}/fcmTokens`), token);
+          }
         }
       }
       setNotifOn(true);
@@ -1216,13 +1236,19 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     }
   }
 
-  async function updateMyName(newName) {
+  async function updateMyProfile({ name, photo, color, emoji }) {
     try {
-      await updateProfile(user, { displayName: newName });
-      await set(ref(db, `groups/${groupId}/members/${user.uid}/name`), newName);
+      if (name && name !== me) {
+        await updateProfile(user, { displayName: name });
+      }
+      const memberPath = `groups/${groupId}/members/${user.uid}`;
+      await set(ref(db, `${memberPath}/name`), name || me);
+      await set(ref(db, `${memberPath}/photo`), photo || null);
+      await set(ref(db, `${memberPath}/color`), photo ? null : color || null);
+      await set(ref(db, `${memberPath}/emoji`), photo ? null : emoji || null);
       setShowProfile(false);
     } catch (e) {
-      setErr("Nu am putut actualiza numele: " + e.message);
+      setErr("Nu am putut actualiza profilul: " + e.message);
     }
   }
 
@@ -1299,10 +1325,31 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
 
   async function deleteEntry(id) {
     try {
-      await remove(ref(db, `groups/${groupId}/entries/${id}`));
+      await set(ref(db, `groups/${groupId}/entries/${id}/deleted`), true);
+      await set(ref(db, `groups/${groupId}/entries/${id}/deletedAt`), Date.now());
+      await set(ref(db, `groups/${groupId}/entries/${id}/deletedBy`), me);
       setConfirmDeleteEntry(null);
     } catch (e) {
       setErr("Nu am putut șterge: " + e.message);
+    }
+  }
+
+  async function restoreEntry(id) {
+    try {
+      await remove(ref(db, `groups/${groupId}/entries/${id}/deleted`));
+      await remove(ref(db, `groups/${groupId}/entries/${id}/deletedAt`));
+      await remove(ref(db, `groups/${groupId}/entries/${id}/deletedBy`));
+      haptic(15);
+    } catch (e) {
+      setErr("Nu am putut restaura: " + e.message);
+    }
+  }
+
+  async function permanentlyDeleteEntry(id) {
+    try {
+      await remove(ref(db, `groups/${groupId}/entries/${id}`));
+    } catch (e) {
+      setErr("Nu am putut șterge definitiv: " + e.message);
     }
   }
 
@@ -1718,12 +1765,28 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
               setShowGroupPanel(false);
               setShowAbout(true);
             }}
+            onOpenTrash={() => {
+              setShowGroupPanel(false);
+              setShowTrash(true);
+            }}
           />
         )}
         {showProfile && (
-          <ProfileModal currentName={me} onSave={updateMyName} onClose={() => setShowProfile(false)} />
+          <ProfileModal
+            currentMember={groupMembers[user.uid] || { name: me }}
+            onSave={updateMyProfile}
+            onClose={() => setShowProfile(false)}
+          />
         )}
         {showAbout && <AboutModal onClose={() => setShowAbout(false)} onSubmitFeedback={submitFeedback} />}
+        {showTrash && (
+          <TrashModal
+            entries={deletedEntries}
+            onClose={() => setShowTrash(false)}
+            onRestore={restoreEntry}
+            onPermanentDelete={permanentlyDeleteEntry}
+          />
+        )}
       </div>
     </>
   );
@@ -1749,6 +1812,7 @@ function GroupPanel({
   onLogout,
   onOpenProfile,
   onOpenAbout,
+  onOpenTrash,
 }) {
   const [copied, setCopied] = useState(false);
   const [goalInput, setGoalInput] = useState(groupInfo.goal || "");
@@ -1938,6 +2002,15 @@ function GroupPanel({
           ✏️ Editează profilul meu
         </button>
 
+        {isAdmin && (
+          <button
+            onClick={onOpenTrash}
+            className="w-full text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-xl py-2.5 mb-2"
+          >
+            🗑️ Coș de gunoi (cinste șterse)
+          </button>
+        )}
+
         <div className="flex gap-2 mb-3">
           <button
             onClick={onSwitchGroup}
@@ -1958,14 +2031,60 @@ function GroupPanel({
   );
 }
 
-function ProfileModal({ currentName, onSave, onClose }) {
-  const [name, setName] = useState(currentName || "");
+function ProfileModal({ currentMember, onSave, onClose }) {
+  const [name, setName] = useState(currentMember.name || "");
+  const [photo, setPhoto] = useState(currentMember.photo || null);
+  const [color, setColor] = useState(currentMember.color || null);
+  const [emoji, setEmoji] = useState(currentMember.emoji || null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  async function handlePhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const base64 = await fileToCompressedBase64(file);
+      setPhoto(base64);
+      setColor(null);
+      setEmoji(null);
+    } catch (err) {}
+    setUploading(false);
+  }
+
+  function pickColor(c) {
+    setColor(c);
+    setPhoto(null);
+  }
+
+  function pickEmoji(em) {
+    setEmoji(em === emoji ? null : em);
+    setPhoto(null);
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 px-4 animate-fadein">
-      <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-3xl w-full max-w-xs p-5 shadow-2xl animate-popin">
+      <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-3xl w-full max-w-xs p-5 shadow-2xl animate-popin max-h-[85vh] overflow-y-auto">
         <div className="flex flex-col items-center mb-4">
-          <Avatar name={name || currentName} size={16} />
+          <div className="relative">
+            <Avatar name={name || currentMember.name} size={16} photo={photo} color={color} emoji={emoji} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="absolute -bottom-1 -right-1 bg-amber-500 text-white rounded-full p-1.5 shadow"
+              title="Încarcă o poză"
+            >
+              <Camera size={13} />
+            </button>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+          {uploading && <p className="text-[11px] text-gray-400 mt-1">se încarcă…</p>}
+          {photo && (
+            <button onClick={() => setPhoto(null)} className="text-[11px] text-red-500 mt-1">
+              Șterge poza
+            </button>
+          )}
         </div>
+
         <h3 className="text-lg font-bold mb-3 text-center">Editează profilul</h3>
         <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Nume afișat</p>
         <input
@@ -1974,12 +2093,50 @@ function ProfileModal({ currentName, onSave, onClose }) {
           onChange={(e) => setName(e.target.value)}
           className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 mb-4"
         />
+
+        {!photo && (
+          <>
+            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              Culoare fundal (dacă nu vrei poză)
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {AVATAR_COLOR_SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => pickColor(c === color ? null : c)}
+                  className={`w-8 h-8 rounded-full border-2 transition-transform active:scale-90 ${
+                    color === c ? "border-gray-900 dark:border-white scale-110" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+
+            <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              Sau alege un avatar (în loc de inițială)
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {AVATAR_EMOJIS.map((em) => (
+                <button
+                  key={em}
+                  onClick={() => pickEmoji(em)}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-lg border-2 transition-transform active:scale-90 ${
+                    emoji === em ? "border-amber-500 bg-amber-50 dark:bg-amber-900/30" : "border-transparent bg-gray-100 dark:bg-gray-800"
+                  }`}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         <p className="text-[11px] text-gray-400 mb-4">
-          Numele se actualizează în acest grup. Dacă ești în mai multe grupuri, revizitează-le ca să se actualizeze și acolo.
+          Modificările se aplică în acest grup. Dacă ești în mai multe grupuri, revizitează-le ca să se actualizeze și acolo.
         </p>
         <div className="flex gap-2">
           <button
-            onClick={() => name.trim() && onSave(name.trim())}
+            onClick={() => name.trim() && onSave({ name: name.trim(), photo, color, emoji })}
             className="flex-1 bg-gradient-to-br from-amber-400 to-orange-500 text-white font-semibold rounded-xl py-2.5 active:scale-95 transition-transform"
           >
             Salvează
@@ -2012,6 +2169,7 @@ function EntryCard({ e, me, deleteEntry, onPhoto, onEdit, confirmDeleteEntry, se
             <img
               src={photos[0]}
               onClick={() => onPhoto(photos)}
+              loading="lazy"
               className="w-12 h-12 rounded-xl object-cover cursor-pointer active:scale-95 transition-transform"
               alt=""
             />
@@ -2477,6 +2635,19 @@ function StatsScreen({ members, entries, groupGoal, onClose }) {
 
   const sortedByNet = stats.slice().sort((a, b) => b.net - a.net);
 
+  const last6Months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const total = cinsteEntries
+      .filter((e) => {
+        const ed = new Date(e.date);
+        return ed.getFullYear() === d.getFullYear() && ed.getMonth() === d.getMonth();
+      })
+      .reduce((s, e) => s + e.amount, 0);
+    last6Months.push({ label: RO_MONTHS[d.getMonth()].slice(0, 3), total });
+  }
+  const maxMonthTotal = Math.max(1, ...last6Months.map((m) => m.total));
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end sm:items-center justify-center animate-fadein">
       <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-t-3xl sm:rounded-3xl w-full max-w-md p-5 pb-8 max-h-[88vh] overflow-y-auto animate-slideup shadow-2xl">
@@ -2496,6 +2667,24 @@ function StatsScreen({ members, entries, groupGoal, onClose }) {
           <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
             <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Medie / cinste</p>
             <p className="text-xl font-extrabold text-gray-700 dark:text-gray-200 mt-0.5">{formatAmount(avgValue)} lei</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3 mb-5">
+          <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Ultimele 6 luni</p>
+          <div className="flex items-end justify-between gap-2 h-24">
+            {last6Months.map((m, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <div className="w-full flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-t-md bg-gradient-to-t from-amber-400 to-orange-500 transition-all duration-700"
+                    style={{ height: `${Math.max(4, (m.total / maxMonthTotal) * 100)}%` }}
+                    title={`${formatAmount(m.total)} lei`}
+                  />
+                </div>
+                <span className="text-[9px] text-gray-400">{m.label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -2839,7 +3028,7 @@ function CalendarModal({ entries, onClose, onPhoto }) {
                     <div key={e.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         {photos.length > 0 ? (
-                          <img src={photos[0]} onClick={() => onPhoto(photos)} className="w-10 h-10 rounded-lg object-cover cursor-pointer shrink-0" alt="" />
+                          <img src={photos[0]} onClick={() => onPhoto(photos)} loading="lazy" className="w-10 h-10 rounded-lg object-cover cursor-pointer shrink-0" alt="" />
                         ) : (
                           <Avatar name={e.from} size={8} />
                         )}
@@ -2995,6 +3184,72 @@ function AboutModal({ onClose, onSubmitFeedback }) {
             >
               Trimite
             </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TrashModal({ entries, onClose, onRestore, onPermanentDelete }) {
+  const [confirmId, setConfirmId] = useState(null);
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end sm:items-center justify-center animate-fadein">
+      <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-t-3xl sm:rounded-3xl w-full max-w-md p-5 pb-8 max-h-[88vh] overflow-y-auto animate-slideup shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">🗑️ Coș de gunoi</h2>
+          <button onClick={onClose} className="text-gray-400">
+            <X size={20} />
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Cinstele șterse rămân aici, vizibile doar pentru admini, până le restaurezi sau le ștergi definitiv.
+        </p>
+
+        {entries.length === 0 ? (
+          <div className="flex flex-col items-center text-center py-8 opacity-70">
+            <span className="text-4xl mb-2">🗑️</span>
+            <p className="text-sm text-gray-400 italic">Coșul e gol.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      {e.from} <ArrowRight size={11} className="text-gray-400" /> {e.to}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {formatAmount(e.amount)} lei · șters de {e.deletedBy || "?"} pe {formatDate(e.deletedAt)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => onRestore(e.id)}
+                    className="flex-1 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg py-1.5"
+                  >
+                    ↩️ Restaurează
+                  </button>
+                  {confirmId === e.id ? (
+                    <button
+                      onClick={() => onPermanentDelete(e.id)}
+                      className="flex-1 text-xs font-medium text-white bg-red-600 rounded-lg py-1.5"
+                    >
+                      Sigur? Șterge definitiv
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmId(e.id)}
+                      className="flex-1 text-xs font-medium text-red-600 border border-red-200 dark:border-red-800 rounded-lg py-1.5"
+                    >
+                      Șterge definitiv
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
