@@ -28,9 +28,16 @@ groups/{groupId}/
 inviteCodes/{CODE}: groupId
 ```
 
-## ⚠️ Securitate — important înainte să distribui aplicația public
+## ⚠️ Reguli Firebase — prioritate mare, citește înainte să distribui aplicația
 
-Regulile "test mode" pe care le ai acum permit oricui cu URL-ul bazei de date să citească/scrie orice, nu doar membrii propriilor grupuri. E ok pentru testare, dar **nu e sigur pentru lansare publică**. Când ești gata, în Firebase → Realtime Database → Rules, pune ceva de genul:
+**Regulile "test mode" pe care le ai acum permit oricui cu adresa bazei de date să citească și să scrie ORICE, nu doar datele din propriile grupuri.** Sunt bune doar pentru dezvoltare/testare, nu pentru o aplicație reală cu utilizatori străini.
+
+### Cum aplici regulile noi, fără să riști să stricăm ceva
+
+1. Firebase Console → Realtime Database → tab **Rules**
+2. **Copiază tot ce ai acum într-un fișier text separat, salvat pe calculator** — ăsta e planul tău de rollback dacă ceva nu merge
+3. Înlocuiește cu regulile de mai jos → **Publish**
+4. **Testează imediat, cu tine logat**: intră în grup, adaugă o cinstă, invită pe altcineva cu un cod, aprobă-l ca admin. Dacă ceva dă eroare de permisiuni, revino la regulile salvate la pasul 2 și spune-mi exact ce eroare ai primit — te ajut să le ajustez.
 
 ```json
 {
@@ -38,17 +45,46 @@ Regulile "test mode" pe care le ai acum permit oricui cu URL-ul bazei de date s�
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        "groups": {
+          "$groupId": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin')"
+          }
+        },
+        "displayName": {
+          ".write": "auth != null && auth.uid === $uid"
+        },
+        "fcmTokens": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        }
       }
     },
     "groups": {
       "$groupId": {
-        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
-        "entries": {
-          ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()"
+        ".read": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()",
+        "name": {
+          ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "inviteCode": {
+          ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
         },
         "members": {
-          ".write": "auth != null"
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin')"
+          }
+        },
+        "pendingMembers": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && (auth.uid === $uid || root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin')"
+          }
+        },
+        "entries": {
+          "$entryId": {
+            ".read": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()"
+          }
         }
       }
     },
@@ -62,11 +98,18 @@ Regulile "test mode" pe care le ai acum permit oricui cu URL-ul bazei de date s�
 }
 ```
 
-Astea sunt un punct de plecare rezonabil, nu perfect — dacă vrei, te ajut să le rafinez mai mult înainte de lansare.
+**Ce fac aceste reguli, pe scurt:**
+- Fiecare persoană își poate citi/scrie doar propriul profil (`users/{uid}`)
+- Un admin de grup poate scrie în profilul altcuiva DOAR pentru a-l adăuga/elimina din acel grup (necesar când aprobă/elimină membri)
+- Doar membrii unui grup pot citi datele acelui grup (nume, membri, cinste)
+- Doar adminii pot schimba numele grupului sau regenera codul de invitație
+- Codurile de invitație pot fi citite/verificate de orice utilizator logat (necesar ca să te poți alătura unui grup nou)
+
+**Nu sunt 100% bulletproof** — de exemplu, oricine logat poate citi un cod de invitație valid dacă îl ghicește (puțin probabil, sunt 6 caractere aleatorii din 32, deci ~1 miliard de combinații). Pentru o aplicație vândută la scară mare, merită o rundă de audit de securitate suplimentară înainte de lansare publică — pot să te ajut cu asta quando ajungi acolo.
 
 ## Restul pașilor (Realtime Database, Vercel, PWA)
 
-Identici cu înainte — vezi structura de fișiere `public/manifest.json`, `public/sw.js`, `public/icon.svg` pentru PWA.
+Identici cu înainte — vezi structura de fișiere `public/manifest.json`, `public/sw.js`, `public/icon.png` pentru PWA.
 
 ## Despre publicarea pe App Store / Google Play
 
