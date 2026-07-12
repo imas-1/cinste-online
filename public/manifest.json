@@ -1,5 +1,5 @@
 {
-  "name": "Caietul de cinste",
+  "name": "Faci cinste? 😉",
   "short_name": "Cinste",
   "description": "Evidența cinstelor în grup",
   "start_url": "/",
@@ -9,9 +9,9 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
