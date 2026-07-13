@@ -68,6 +68,12 @@ inviteCodes/{CODE}: groupId
         "inviteCode": {
           ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
         },
+        "createdBy": {
+          ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "goal": {
+          ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
+        },
         "members": {
           "$uid": {
             ".read": "auth != null",
@@ -93,6 +99,10 @@ inviteCodes/{CODE}: groupId
         ".read": "auth != null",
         ".write": "auth != null"
       }
+    },
+    "feedback": {
+      ".write": "auth != null",
+      ".read": false
     }
   }
 }
