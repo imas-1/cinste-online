@@ -60,8 +60,10 @@ inviteCodes/{CODE}: groupId
       }
     },
     "groups": {
+      ".read": "auth != null && auth.uid === 'm7dxclvNRLUnQSYGHIl43AWxtkk1'",
       "$groupId": {
         ".read": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()",
+        ".write": "auth != null && !data.exists() && newData.child('members').child(auth.uid).child('role').val() === 'admin'",
         "name": {
           ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
         },
