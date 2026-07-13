@@ -30,6 +30,7 @@ import {
   Download,
   QrCode,
   Ban,
+  Crown,
 } from "lucide-react";
 import { db, auth, googleProvider, getMessagingIfSupported, VAPID_KEY } from "./firebase";
 import { ref, onValue, set, push, remove, get } from "firebase/database";
@@ -47,6 +48,7 @@ import {
 
 const THEME_KEY = "cinsteTheme";
 const ACTIVE_GROUP_KEY = "cinsteActiveGroup";
+const CREATOR_UID = "m7dxclvNRLUnQSYGHIl43AWxtkk1";
 
 const AVATAR_GRADIENTS = [
   "from-amber-400 to-orange-500",
@@ -762,7 +764,7 @@ function TypingTagline({ text }) {
   );
 }
 
-function GroupGate({ user, theme, setTheme, onGroupReady }) {
+function GroupGate({ user, theme, setTheme, onGroupReady, isCreator, onOpenCreator }) {
   const [myGroups, setMyGroups] = useState(null); // null = loading
   const [mode, setMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -869,6 +871,15 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
   return (
     <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans flex flex-col items-center justify-center px-6 py-10 animate-fadein">
       <div className="absolute top-5 right-5 flex items-center gap-2">
+        {isCreator && (
+          <button
+            onClick={onOpenCreator}
+            title="Panou creator"
+            className="p-2 rounded-full border border-amber-300 dark:border-amber-700 text-amber-500 bg-amber-50 dark:bg-amber-900/30"
+          >
+            <Crown size={15} />
+          </button>
+        )}
         <ThemeToggle theme={theme} setTheme={setTheme} />
         <button
           onClick={() => signOut(auth)}
@@ -1016,6 +1027,7 @@ export default function App() {
   const [theme, setTheme] = useTheme();
   const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
   const [activeGroup, setActiveGroup] = useState(() => loadLS(ACTIVE_GROUP_KEY, null));
+  const [showCreator, setShowCreator] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -1043,11 +1055,27 @@ export default function App() {
     );
   }
 
+  if (showCreator && user.uid === CREATOR_UID) {
+    return (
+      <>
+        <BackgroundBlobs />
+        <CreatorDashboard theme={theme} setTheme={setTheme} onClose={() => setShowCreator(false)} />
+      </>
+    );
+  }
+
   if (!activeGroup) {
     return (
       <>
         <BackgroundBlobs />
-        <GroupGate user={user} theme={theme} setTheme={setTheme} onGroupReady={setActiveGroup} />
+        <GroupGate
+          user={user}
+          theme={theme}
+          setTheme={setTheme}
+          onGroupReady={setActiveGroup}
+          isCreator={user.uid === CREATOR_UID}
+          onOpenCreator={() => setShowCreator(true)}
+        />
       </>
     );
   }
@@ -3305,6 +3333,149 @@ function TrashModal({ entries, onClose, onRestore, onPermanentDelete }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CreatorDashboard({ theme, setTheme, onClose }) {
+  const [groups, setGroups] = useState(null); // null = loading
+  const [selectedId, setSelectedId] = useState(null);
+  const [groupDetail, setGroupDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "groups"), (snap) => {
+      const val = snap.val() || {};
+      const list = Object.entries(val).map(([id, g]) => ({
+        id,
+        name: g.name || "Grup",
+        memberCount: Object.keys(g.members || {}).length,
+        entryCount: Object.keys(g.entries || {}).length,
+      }));
+      list.sort((a, b) => b.entryCount - a.entryCount);
+      setGroups(list);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setGroupDetail(null);
+      return;
+    }
+    setLoadingDetail(true);
+    const unsub = onValue(ref(db, `groups/${selectedId}`), (snap) => {
+      const v = snap.val() || {};
+      const members = Object.values(v.members || {}).map((m) => m.name);
+      const entries = Object.entries(v.entries || {})
+        .map(([id, e]) => ({ id, ...e }))
+        .filter((e) => !e.deleted)
+        .sort((a, b) => (b.date || 0) - (a.date || 0));
+      setGroupDetail({ name: v.name, members, entries });
+      setLoadingDetail(false);
+    });
+    return () => unsub();
+  }, [selectedId]);
+
+  if (selectedId && groupDetail) {
+    const stats = computeStats(groupDetail.members, groupDetail.entries);
+    const total = groupDetail.entries.filter((e) => e.type === "cinste").reduce((s, e) => s + e.amount, 0);
+    return (
+      <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans px-5 pt-6 pb-10 animate-fadein">
+        <button
+          onClick={() => setSelectedId(null)}
+          className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 mb-4"
+        >
+          <ArrowLeft size={16} /> Toate grupurile
+        </button>
+        <h1 className="text-xl font-bold flex items-center gap-2 mb-1">
+          <Crown size={18} className="text-amber-500" /> {groupDetail.name}
+        </h1>
+        <p className="text-xs text-gray-400 mb-5">mod spectator — doar tu vezi asta</p>
+
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Membri</p>
+            <p className="text-xl font-extrabold mt-0.5">{groupDetail.members.length}</p>
+          </div>
+          <div className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Total cinste</p>
+            <p className="text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-0.5">{formatAmount(total)} lei</p>
+          </div>
+        </div>
+
+        <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Membri</p>
+        <div className="flex flex-wrap gap-2 mb-5">
+          {stats.map((s) => (
+            <span key={s.name} className="text-sm px-3 py-1.5 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center gap-1.5">
+              <Avatar name={s.name} size={5} /> {s.name}
+            </span>
+          ))}
+        </div>
+
+        <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+          Ultimele cinste ({groupDetail.entries.length})
+        </p>
+        <div className="space-y-2">
+          {groupDetail.entries.slice(0, 40).map((e) => (
+            <div key={e.id} className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-2.5 flex items-center justify-between">
+              <span className="text-sm">
+                {e.from} → {e.to}
+                {e.note ? <span className="text-gray-400"> · {e.note}</span> : ""}
+              </span>
+              <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatAmount(e.amount)} lei</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans px-5 pt-6 pb-10 animate-fadein">
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Crown size={20} className="text-amber-500" /> Panou creator
+        </h1>
+        <div className="flex items-center gap-2">
+          <ThemeToggle theme={theme} setTheme={setTheme} />
+          <button onClick={onClose} className="p-2 rounded-full border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300">
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mb-5">toate grupurile, mod spectator — vizibil doar pentru tine</p>
+
+      {groups === null ? (
+        <SkeletonScreen />
+      ) : groups.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">Niciun grup creat încă.</p>
+      ) : (
+        <div className="space-y-2">
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => setSelectedId(g.id)}
+              className="w-full text-left rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between hover:border-amber-400 hover:shadow-md transition-all active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-full bg-gradient-to-br ${colorFor(g.name)} flex items-center justify-center text-white font-bold text-sm shrink-0`}
+                >
+                  {g.name?.[0]?.toUpperCase() || "G"}
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{g.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {g.memberCount} membri · {g.entryCount} cinste
+                  </p>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-gray-400" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
