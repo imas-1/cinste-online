@@ -75,7 +75,10 @@ function setAvatarMeta(map) {
 const AVATAR_COLOR_SWATCHES = [
   "#f59e0b", "#f43f5e", "#8b5cf6", "#3b82f6", "#10b981", "#ec4899", "#84cc16", "#06b6d4",
 ];
-const AVATAR_EMOJIS = ["😎", "🦊", "🐱", "🐶", "🐼", "🦁", "🐨", "🐸", "🦄", "🐵", "🧑‍🚀", "🥷"];
+const AVATAR_EMOJIS = [
+  "😎", "🦊", "🐱", "🐶", "🐼", "🦁", "🐨", "🐸", "🦄", "🐵", "🧑‍🚀", "🥷",
+  "🤠", "🕵️", "🧙", "🦹", "🧛", "🧑‍🎤", "🥸", "🧑‍🎨",
+];
 
 function Avatar({ name, size = 10, photo, color, emoji }) {
   const meta = avatarMetaStore[name] || {};
@@ -739,6 +742,26 @@ function translateAuthError(code) {
   return map[code] || "A apărut o eroare. Încearcă din nou.";
 }
 
+function TypingTagline({ text }) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    setShown("");
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      setShown(text.slice(0, i));
+      if (i >= text.length) clearInterval(id);
+    }, 28);
+    return () => clearInterval(id);
+  }, [text]);
+  return (
+    <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-xs min-h-[2.5rem]">
+      {shown}
+      <span className="inline-block w-0.5 h-4 bg-amber-400 ml-0.5 align-middle animate-pulse" />
+    </p>
+  );
+}
+
 function GroupGate({ user, theme, setTheme, onGroupReady }) {
   const [myGroups, setMyGroups] = useState(null); // null = loading
   const [mode, setMode] = useState(() => {
@@ -844,7 +867,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
   }
 
   return (
-    <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans flex flex-col items-center justify-center px-6 animate-fadein">
+    <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans flex flex-col items-center justify-center px-6 py-10 animate-fadein">
       <div className="absolute top-5 right-5 flex items-center gap-2">
         <ThemeToggle theme={theme} setTheme={setTheme} />
         <button
@@ -854,33 +877,56 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
           <LogOut size={15} />
         </button>
       </div>
-      <img src="/icon.png" alt="Faci cinste?" className="w-20 h-20 rounded-2xl shadow-lg shadow-amber-500/40 mb-4 animate-popin" />
-      <h1 className="text-2xl font-extrabold">Salut, {user.displayName}</h1>
 
+      <div className="relative mb-3 animate-popin">
+        <div className="absolute inset-0 rounded-3xl bg-amber-400/40 blur-2xl scale-110" />
+        <img src="/icon.png" alt="Faci cinste?" className="relative w-24 h-24 rounded-3xl shadow-xl shadow-amber-500/40" />
+      </div>
+      <h1 className="text-2xl font-extrabold">Salut, {user.displayName} 👋</h1>
+      <TypingTagline
+        text={
+          myGroups && myGroups.length > 0
+            ? "Alege un grup ca să continui, sau pornește unul nou."
+            : "Hai să creăm sau să te alături primului tău grup de cinste."
+        }
+      />
+
+      <div className="w-full max-w-xs mt-6 rounded-3xl border border-gray-200/70 dark:border-gray-700 bg-white/70 dark:bg-gray-800/60 backdrop-blur-md shadow-lg p-5">
       {mode === "pick" && (
-        <div className="mt-6 w-full max-w-xs space-y-2">
+        <div className="w-full space-y-2">
           {myGroups.length > 0 && (
             <>
               <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">Grupurile tale</p>
-              {myGroups.map((g) => (
+              {myGroups.map((g, i) => (
                 <button
                   key={g.id}
+                  style={{ animationDelay: `${i * 70}ms` }}
                   onClick={() => {
                     saveLS(ACTIVE_GROUP_KEY, g.id);
                     onGroupReady(g.id);
                   }}
-                  className="w-full text-left px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-amber-500 hover:shadow-md transition-all flex items-center justify-between active:scale-[0.99]"
+                  className="w-full animate-fadein text-left px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-amber-500 hover:shadow-md transition-all flex items-center gap-3 active:scale-[0.99]"
                 >
-                  <span className="font-medium">{g.name}</span>
+                  <div
+                    className={`w-9 h-9 rounded-full bg-gradient-to-br ${colorFor(g.name)} flex items-center justify-center text-white font-bold text-sm shrink-0`}
+                  >
+                    {g.name?.[0]?.toUpperCase() || "G"}
+                  </div>
+                  <span className="font-medium flex-1">{g.name}</span>
                   <ArrowRight size={16} className="text-gray-400" />
                 </button>
               ))}
+              <div className="flex items-center gap-2 py-1">
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                <span className="text-[10px] text-gray-400">sau</span>
+                <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+              </div>
             </>
           )}
-          <div className="pt-3 flex gap-2">
+          <div className="flex gap-2">
             <button
               onClick={() => setMode("create")}
-              className="flex-1 bg-gradient-to-br from-amber-400 to-orange-500 text-white text-sm font-medium rounded-xl py-2.5 active:scale-95 transition-transform"
+              className="flex-1 bg-gradient-to-br from-amber-400 to-orange-500 text-white text-sm font-medium rounded-xl py-2.5 active:scale-95 transition-transform shadow-md shadow-amber-500/30"
             >
               + Grup nou
             </button>
@@ -895,7 +941,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
       )}
 
       {mode === "create" && (
-        <div className="mt-6 w-full max-w-xs rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4 animate-slideup">
+        <div className="w-full animate-slideup">
           <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">Numele grupului</p>
           <input
             autoFocus
@@ -921,7 +967,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
       )}
 
       {mode === "join" && (
-        <div className="mt-6 w-full max-w-xs rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4 animate-slideup">
+        <div className="w-full animate-slideup">
           <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">Cod de invitație</p>
           <input
             autoFocus
@@ -947,7 +993,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
       )}
 
       {mode === "pending" && (
-        <div className="mt-6 w-full max-w-xs rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 shadow-sm p-5 text-center animate-slideup">
+        <div className="w-full text-center animate-slideup">
           <p className="text-3xl mb-2">⏳</p>
           <p className="text-sm font-medium mb-1">Cerere trimisă</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
@@ -961,6 +1007,7 @@ function GroupGate({ user, theme, setTheme, onGroupReady }) {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1112,6 +1159,14 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     if (!next) {
       setNotifOn(false);
       saveLS(`cinsteNotif:${user.uid}`, false);
+      try {
+        const messaging = await getMessagingIfSupported();
+        if (messaging) {
+          const swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+          const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+          if (token) await remove(ref(db, `users/${user.uid}/fcmTokens/${token}`));
+        }
+      } catch (e) {}
       return;
     }
     try {
@@ -1122,11 +1177,8 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
         const swReg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
         if (token) {
-          const snap = await get(ref(db, `users/${user.uid}/fcmTokens`));
-          const existing = Object.values(snap.val() || {});
-          if (!existing.includes(token)) {
-            await push(ref(db, `users/${user.uid}/fcmTokens`), token);
-          }
+          // Token-ul e folosit ca cheie -> imposibil să apară duplicate, chiar dacă activezi de mai multe ori
+          await set(ref(db, `users/${user.uid}/fcmTokens/${token}`), true);
         }
       }
       setNotifOn(true);
@@ -1147,7 +1199,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
         uids.map(async (uid) => {
           const snap = await get(ref(db, `users/${uid}/fcmTokens`));
           const val = snap.val() || {};
-          return Object.values(val);
+          return Object.keys(val); // token-urile sunt cheile, nu valorile
         })
       );
       const tokens = tokenLists.flat();
