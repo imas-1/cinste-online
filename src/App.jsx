@@ -1028,6 +1028,7 @@ export default function App() {
   const [user, setUser] = useState(undefined); // undefined = loading, null = logged out
   const [activeGroup, setActiveGroup] = useState(() => loadLS(ACTIVE_GROUP_KEY, null));
   const [showCreator, setShowCreator] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(undefined); // undefined = loading, null = not accepted
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -1036,6 +1037,24 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setTermsAccepted(undefined);
+      return;
+    }
+    const unsub = onValue(ref(db, `users/${user.uid}/termsAccepted`), (snap) => {
+      setTermsAccepted(snap.val() === true ? true : null);
+    });
+    return () => unsub();
+  }, [user]);
+
+  async function acceptTerms() {
+    if (!user) return;
+    try {
+      await set(ref(db, `users/${user.uid}/termsAccepted`), true);
+    } catch (e) {}
+  }
 
   if (user === undefined) {
     return (
@@ -1051,6 +1070,24 @@ export default function App() {
       <>
         <BackgroundBlobs />
         <AuthScreen theme={theme} setTheme={setTheme} />
+      </>
+    );
+  }
+
+  if (termsAccepted === undefined) {
+    return (
+      <>
+        <BackgroundBlobs />
+        <SkeletonScreen />
+      </>
+    );
+  }
+
+  if (termsAccepted !== true) {
+    return (
+      <>
+        <BackgroundBlobs />
+        <TermsGate theme={theme} setTheme={setTheme} onAccept={acceptTerms} onLogout={() => signOut(auth)} />
       </>
     );
   }
@@ -1232,12 +1269,18 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
       );
       const tokens = tokenLists.flat();
       if (tokens.length === 0) return;
-      fetch("/api/notify", {
+      const res = await fetch("/api/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokens, title, body }),
-      }).catch(() => {});
-    } catch (e) {}
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error("Notify failed:", res.status, errBody);
+      }
+    } catch (e) {
+      console.error("Notify error:", e);
+    }
   }
 
   const me = groupMembers[user.uid]?.name || user.displayName;
@@ -1264,6 +1307,21 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
       await set(ref(db, `inviteCodes/${code}`), groupId);
     } catch (e) {
       setErr("Nu am putut genera cod nou: " + e.message);
+    }
+  }
+
+  async function deleteGroup() {
+    try {
+      const memberUids = Object.keys(groupMembers);
+      // curățăm indexul de grupuri al fiecărui membru CÂT TIMP grupul (și rolul de admin) încă există
+      await Promise.all(memberUids.map((uid) => remove(ref(db, `users/${uid}/groups/${groupId}`))));
+      if (groupInfo.inviteCode) {
+        await remove(ref(db, `inviteCodes/${groupInfo.inviteCode}`));
+      }
+      await remove(ref(db, `groups/${groupId}`));
+      onSwitchGroup();
+    } catch (e) {
+      setErr("Nu am putut șterge grupul: " + e.message);
     }
   }
 
@@ -1849,6 +1907,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
               setShowGroupPanel(false);
               setShowTrash(true);
             }}
+            onDeleteGroup={deleteGroup}
           />
         )}
         {showProfile && (
@@ -1893,6 +1952,7 @@ function GroupPanel({
   onOpenProfile,
   onOpenAbout,
   onOpenTrash,
+  onDeleteGroup,
 }) {
   const [copied, setCopied] = useState(false);
   const [goalInput, setGoalInput] = useState(groupInfo.goal || "");
@@ -2091,6 +2151,8 @@ function GroupPanel({
           </button>
         )}
 
+        {isAdmin && <DeleteGroupZone groupName={groupInfo.name} onDelete={onDeleteGroup} />}
+
         <div className="flex gap-2 mb-3">
           <button
             onClick={onSwitchGroup}
@@ -2105,6 +2167,58 @@ function GroupPanel({
 
         <button onClick={onOpenAbout} className="w-full text-center text-xs text-gray-400 underline">
           Despre aplicație · Confidențialitate · Termeni · Raportează o problemă
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DeleteGroupZone({ groupName, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const canDelete = confirmText.trim() === groupName;
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full text-sm font-medium text-red-600 border border-red-200 dark:border-red-800 rounded-xl py-2.5 mb-2"
+      >
+        🚨 Șterge grupul definitiv
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 mb-3 animate-popin">
+      <p className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1">Ești absolut sigur?</p>
+      <p className="text-xs text-red-600 dark:text-red-400 mb-3">
+        Se șterg definitiv toate cinstele, membrii și istoricul grupului „{groupName}". Nu se poate anula.
+      </p>
+      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+        Scrie <strong>{groupName}</strong> ca să confirmi:
+      </p>
+      <input
+        value={confirmText}
+        onChange={(e) => setConfirmText(e.target.value)}
+        className="w-full bg-white dark:bg-gray-900 border border-red-300 dark:border-red-700 rounded-xl px-3 py-2 text-sm mb-3 focus:outline-none focus:border-red-500"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={onDelete}
+          disabled={!canDelete}
+          className="flex-1 bg-red-600 text-white text-sm font-semibold rounded-xl py-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Șterge definitiv
+        </button>
+        <button
+          onClick={() => {
+            setOpen(false);
+            setConfirmText("");
+          }}
+          className="px-4 text-sm text-gray-500 dark:text-gray-400 rounded-xl border border-gray-300 dark:border-gray-700"
+        >
+          Renunță
         </button>
       </div>
     </div>
@@ -3134,6 +3248,50 @@ function CalendarModal({ entries, onClose, onPhoto }) {
 
 const ABOUT_TABS = ["Despre", "Confidențialitate", "Termeni", "Raportează / Feedback"];
 
+function TermsGate({ theme, setTheme, onAccept, onLogout }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="min-h-screen text-gray-900 dark:text-gray-100 font-sans flex flex-col items-center justify-center px-6 py-10 animate-fadein">
+      <div className="absolute top-5 right-5 flex items-center gap-2">
+        <ThemeToggle theme={theme} setTheme={setTheme} />
+        <button onClick={onLogout} className="p-2 rounded-full border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300">
+          <LogOut size={15} />
+        </button>
+      </div>
+      <img src="/icon.png" alt="Faci cinste?" className="w-16 h-16 rounded-2xl shadow-lg shadow-amber-500/40 mb-4" />
+      <h1 className="text-xl font-extrabold mb-1">Termeni și Confidențialitate</h1>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">Trebuie să accepți ca să poți folosi aplicația.</p>
+
+      <div className="w-full max-w-sm rounded-3xl border border-gray-200/70 dark:border-gray-700 bg-white/80 dark:bg-gray-800/70 backdrop-blur-md shadow-lg p-5 max-h-[50vh] overflow-y-auto text-sm text-gray-600 dark:text-gray-300 space-y-3 leading-relaxed">
+        <p>Folosind <strong>Faci cinste? 😉</strong> ești de acord cu următoarele:</p>
+        <p>1. Ești responsabil pentru acuratețea sumelor și tranzacțiilor pe care le introduci.</p>
+        <p>2. Aplicația e un instrument de evidență, nu procesează plăți reale.</p>
+        <p>3. Datele tale (email, nume, cinstele introduse) sunt stocate pe Firebase și vizibile membrilor grupurilor din care faci parte.</p>
+        <p>
+          4. <strong>Creatorul aplicației poate vizualiza, în scop de research și îmbunătățire a experienței,
+          toate grupurile și cinstele făcute din ele</strong> — inclusiv poze, comentarii și reacții. Aceste date
+          nu sunt distribuite altor persoane și nu sunt folosite în scop comercial.
+        </p>
+        <p>5. Ne rezervăm dreptul de a suspenda conturi care abuzează de aplicație.</p>
+        <p className="text-xs text-gray-400">Poți citi oricând textul complet din aplicație, la „Despre aplicație".</p>
+      </div>
+
+      <label className="flex items-start gap-2 mt-4 max-w-sm text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+        <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5" />
+        Am citit și sunt de acord cu termenii și cu politica de confidențialitate de mai sus.
+      </label>
+
+      <button
+        onClick={onAccept}
+        disabled={!checked}
+        className="w-full max-w-sm mt-4 bg-gradient-to-br from-amber-400 to-orange-500 text-white font-semibold rounded-xl py-3 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-transform shadow-lg shadow-amber-500/30"
+      >
+        Accept și continuă
+      </button>
+    </div>
+  );
+}
+
 function AboutModal({ onClose, onSubmitFeedback }) {
   const [tab, setTab] = useState(0);
   const [feedbackType, setFeedbackType] = useState("bug");
@@ -3342,6 +3500,7 @@ function CreatorDashboard({ theme, setTheme, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
   const [groupDetail, setGroupDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [creatorLightbox, setCreatorLightbox] = useState(null);
 
   useEffect(() => {
     const unsub = onValue(ref(db, "groups"), (snap) => {
@@ -3417,16 +3576,53 @@ function CreatorDashboard({ theme, setTheme, onClose }) {
           Ultimele cinste ({groupDetail.entries.length})
         </p>
         <div className="space-y-2">
-          {groupDetail.entries.slice(0, 40).map((e) => (
-            <div key={e.id} className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-sm">
-                {e.from} → {e.to}
-                {e.note ? <span className="text-gray-400"> · {e.note}</span> : ""}
-              </span>
-              <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatAmount(e.amount)} lei</span>
-            </div>
-          ))}
+          {groupDetail.entries.slice(0, 40).map((e) => {
+            const photos = photosOf(e);
+            const reactions = Object.entries(e.reactions || {}).filter(([, users]) => Object.keys(users).length > 0);
+            const comments = e.comments ? Object.values(e.comments) : [];
+            return (
+              <div key={e.id} className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {photos.length > 0 ? (
+                      <img
+                        src={photos[0]}
+                        onClick={() => setCreatorLightbox(photos)}
+                        loading="lazy"
+                        className="w-10 h-10 rounded-lg object-cover cursor-pointer shrink-0"
+                        alt=""
+                      />
+                    ) : (
+                      <Avatar name={e.from} size={8} />
+                    )}
+                    <span className="text-sm min-w-0">
+                      {e.from} → {e.to}
+                      {e.note ? <span className="text-gray-400"> · {e.note}</span> : ""}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                    {formatAmount(e.amount)} lei
+                  </span>
+                </div>
+                {(reactions.length > 0 || comments.length > 0) && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2">
+                    {reactions.map(([emo, users]) => (
+                      <span key={emo} className="text-xs bg-white dark:bg-gray-900 px-2 py-0.5 rounded-full">
+                        {emo} {Object.keys(users).length}
+                      </span>
+                    ))}
+                    {comments.map((c, i) => (
+                      <span key={i} className="text-xs text-gray-500 dark:text-gray-400 italic">
+                        💬 {c.author}: {c.text}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
+        {creatorLightbox && <Lightbox photos={creatorLightbox} onClose={() => setCreatorLightbox(null)} />}
       </div>
     );
   }
