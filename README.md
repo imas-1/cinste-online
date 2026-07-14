@@ -53,6 +53,9 @@ inviteCodes/{CODE}: groupId
         "displayName": {
           ".write": "auth != null && auth.uid === $uid"
         },
+        "termsAccepted": {
+          ".write": "auth != null && auth.uid === $uid"
+        },
         "fcmTokens": {
           ".read": "auth != null && auth.uid === $uid",
           ".write": "auth != null && auth.uid === $uid"
@@ -63,7 +66,7 @@ inviteCodes/{CODE}: groupId
       ".read": "auth != null && auth.uid === 'm7dxclvNRLUnQSYGHIl43AWxtkk1'",
       "$groupId": {
         ".read": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).exists()",
-        ".write": "auth != null && !data.exists() && newData.child('members').child(auth.uid).child('role').val() === 'admin'",
+        ".write": "auth != null && ((!data.exists() && newData.child('members').child(auth.uid).child('role').val() === 'admin') || (data.exists() && data.child('members').child(auth.uid).child('role').val() === 'admin'))",
         "name": {
           ".write": "auth != null && root.child('groups').child($groupId).child('members').child(auth.uid).child('role').val() === 'admin'"
         },
