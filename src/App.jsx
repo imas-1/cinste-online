@@ -3263,16 +3263,20 @@ function TermsGate({ theme, setTheme, onAccept, onLogout }) {
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">Trebuie să accepți ca să poți folosi aplicația.</p>
 
       <div className="w-full max-w-sm rounded-3xl border border-gray-200/70 dark:border-gray-700 bg-white/80 dark:bg-gray-800/70 backdrop-blur-md shadow-lg p-5 max-h-[50vh] overflow-y-auto text-sm text-gray-600 dark:text-gray-300 space-y-3 leading-relaxed">
-        <p>Folosind <strong>Faci cinste? 😉</strong> ești de acord cu următoarele:</p>
+        <p>Folosind Faci cinste? 😉 ești de acord cu următoarele:</p>
         <p>1. Ești responsabil pentru acuratețea sumelor și tranzacțiilor pe care le introduci.</p>
-        <p>2. Aplicația e un instrument de evidență, nu procesează plăți reale.</p>
+        <p>2. Aplicația e un instrument de evidență, nu procesează plăți reale — banii se dau/primesc în afara aplicației.</p>
         <p>3. Datele tale (email, nume, cinstele introduse) sunt stocate pe Firebase și vizibile membrilor grupurilor din care faci parte.</p>
+        <p>4. Nu vom fi răspunzători pentru neînțelegeri financiare între membrii unui grup.</p>
+        <p>5. Ne rezervăm dreptul de a suspenda conturi care abuzează de aplicație (spam, conținut nepotrivit în poze/note).</p>
+        <p>6. Poți cere oricând ștergerea completă a datelor tale contactând administratorul aplicației.</p>
+        <p>7. Aplicația poate suferi modificări sau întreruperi temporare fără notificare prealabilă.</p>
+        <p>8. Ești responsabil să păstrezi confidențiale datele de acces la contul tău.</p>
         <p>
-          4. <strong>Creatorul aplicației poate vizualiza, în scop de research și îmbunătățire a experienței,
-          toate grupurile și cinstele făcute din ele</strong> — inclusiv poze, comentarii și reacții. Aceste date
-          nu sunt distribuite altor persoane și nu sunt folosite în scop comercial.
+          9. Creatorul aplicației poate vizualiza, în scop de research și îmbunătățire a experienței, toate grupurile
+          și cinstele făcute din ele — inclusiv poze, comentarii și reacții. Aceste date nu sunt distribuite altor
+          persoane și nu sunt folosite în scop comercial.
         </p>
-        <p>5. Ne rezervăm dreptul de a suspenda conturi care abuzează de aplicație.</p>
         <p className="text-xs text-gray-400">Poți citi oricând textul complet din aplicație, la „Despre aplicație".</p>
       </div>
 
@@ -3501,6 +3505,18 @@ function CreatorDashboard({ theme, setTheme, onClose }) {
   const [groupDetail, setGroupDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [creatorLightbox, setCreatorLightbox] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackList, setFeedbackList] = useState([]);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "feedback"), (snap) => {
+      const val = snap.val() || {};
+      const list = Object.entries(val).map(([id, f]) => ({ id, ...f }));
+      list.sort((a, b) => (b.date || 0) - (a.date || 0));
+      setFeedbackList(list);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsub = onValue(ref(db, "groups"), (snap) => {
@@ -3641,6 +3657,43 @@ function CreatorDashboard({ theme, setTheme, onClose }) {
         </div>
       </div>
       <p className="text-xs text-gray-400 mb-5">toate grupurile, mod spectator — vizibil doar pentru tine</p>
+
+      <button
+        onClick={() => setShowFeedback((s) => !s)}
+        className={`w-full flex items-center justify-between text-sm font-medium rounded-2xl px-4 py-3 mb-5 border transition-colors ${
+          showFeedback
+            ? "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+            : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+        }`}
+      >
+        <span>💬 Feedback primit ({feedbackList.length})</span>
+        <ArrowRight size={16} className={showFeedback ? "rotate-90 transition-transform" : "transition-transform"} />
+      </button>
+
+      {showFeedback && (
+        <div className="space-y-2 mb-6 animate-fadein">
+          {feedbackList.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">Niciun mesaj încă.</p>
+          ) : (
+            feedbackList.map((f) => (
+              <div key={f.id} className="rounded-2xl bg-gray-50 dark:bg-gray-800 px-4 py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                      f.type === "bug" ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400" : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+                    }`}
+                  >
+                    {f.type === "bug" ? "🐞 bug" : "💬 idee"}
+                  </span>
+                  <span className="text-[10px] text-gray-400">{formatDate(f.date)}</span>
+                </div>
+                <p className="text-sm">{f.message}</p>
+                <p className="text-xs text-gray-400 mt-1">de la: {f.from}</p>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {groups === null ? (
         <SkeletonScreen />
