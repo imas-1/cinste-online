@@ -107,7 +107,7 @@ inviteCodes/{CODE}: groupId
     },
     "feedback": {
       ".write": "auth != null",
-      ".read": false
+      ".read": "auth != null && auth.uid === 'm7dxclvNRLUnQSYGHIl43AWxtkk1'"
     }
   }
 }
