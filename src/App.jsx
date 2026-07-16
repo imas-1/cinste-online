@@ -1224,8 +1224,12 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     let unsub;
     (async () => {
       const messaging = await getMessagingIfSupported();
-      if (!messaging) return;
+      if (!messaging) {
+        setErr("DEBUG: messaging NU e suportat pe acest device/browser");
+        return;
+      }
       unsub = onMessage(messaging, async (payload) => {
+        setErr("DEBUG: mesaj primit în prim-plan! " + JSON.stringify(payload.notification || {}));
         const title = payload.notification?.title || "Caietul de cinste";
         const body = payload.notification?.body || "";
         playChime();
