@@ -1224,22 +1224,15 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     let unsub;
     (async () => {
       const messaging = await getMessagingIfSupported();
-      if (!messaging) {
-        setErr("DEBUG: messaging NU e suportat pe acest device/browser");
-        return;
-      }
+      if (!messaging) return;
       unsub = onMessage(messaging, async (payload) => {
-        setErr("DEBUG: mesaj primit în prim-plan! " + JSON.stringify(payload.notification || {}));
         const title = payload.notification?.title || "Caietul de cinste";
         const body = payload.notification?.body || "";
-        playChime();
         if (Notification.permission === "granted") {
           try {
             const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
             if (reg) {
               reg.showNotification(title, { body, icon: "/icon.png", badge: "/icon.png" });
-            } else {
-              new Notification(title, { body, icon: "/icon.png" });
             }
           } catch (e) {}
         }
@@ -1320,6 +1313,24 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   const amBlocked = !!groupMembers[user.uid]?.blocked;
   const members = Object.values(groupMembers).map((m) => m.name);
   const others = members.filter((m) => m !== me);
+
+  const [receivedToast, setReceivedToast] = useState("");
+  const mountTimeRef = useRef(Date.now());
+  const seenIdsRef = useRef(new Set());
+  useEffect(() => {
+    if (!me) return;
+    entries.forEach((e) => {
+      if (seenIdsRef.current.has(e.id)) return;
+      seenIdsRef.current.add(e.id);
+      if (e.date && e.date < mountTimeRef.current) return; // doar cinstele noi, apărute după deschiderea aplicației
+      if (e.to !== me || e.from === me) return;
+      const msg =
+        e.type === "rambursare" ? `${e.from} ți-a dat banii înapoi 🤝` : `${e.from} ți-a făcut cinste! 🎉`;
+      setReceivedToast(msg);
+      playChime();
+      setTimeout(() => setReceivedToast(""), 4000);
+    });
+  }, [entries, me]);
 
   async function removeMember(uid) {
     try {
@@ -1780,6 +1791,12 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
         {err && (
           <div className="fixed top-4 inset-x-4 z-50 text-sm text-red-700 bg-white dark:bg-gray-800 dark:text-red-400 shadow-lg border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 animate-slideup">
             {err}
+          </div>
+        )}
+
+        {receivedToast && (
+          <div className="fixed top-4 inset-x-4 z-50 text-sm font-medium text-amber-800 bg-amber-50 dark:bg-amber-900/40 dark:text-amber-300 shadow-lg border border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3 animate-slideup">
+            {receivedToast}
           </div>
         )}
 
