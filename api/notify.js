@@ -2,21 +2,13 @@ import admin from "firebase-admin";
 
 if (!admin.apps.length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY_B64
-    ? Buffer.from(process.env.FIREBASE_PRIVATE_KEY_B64, "base64").toString("utf-8")
+    ? Buffer.from(process.env.FIREBASE_PRIVATE_KEY_B64, "base64").toString("utf-8").trim() + "\n"
     : (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-
-  // DEBUG temporar - se șterge după ce reparăm
-  console.log("DEBUG projectId:", JSON.stringify(process.env.FIREBASE_PROJECT_ID));
-  console.log("DEBUG clientEmail:", JSON.stringify(process.env.FIREBASE_CLIENT_EMAIL));
-  console.log("DEBUG privateKey length:", privateKey.length);
-  console.log("DEBUG privateKey starts:", JSON.stringify(privateKey.slice(0, 35)));
-  console.log("DEBUG privateKey ends:", JSON.stringify(privateKey.slice(-35)));
-  console.log("DEBUG usingB64:", !!process.env.FIREBASE_PRIVATE_KEY_B64);
 
   admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      projectId: (process.env.FIREBASE_PROJECT_ID || "").trim(),
+      clientEmail: (process.env.FIREBASE_CLIENT_EMAIL || "").trim(),
       privateKey,
     }),
   });
