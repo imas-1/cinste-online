@@ -29,8 +29,17 @@ export default async function handler(req, res) {
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
+
+    console.log(`Notify: ${response.successCount} succes, ${response.failureCount} eșec din ${tokens.length} token-uri`);
+    response.responses.forEach((r, i) => {
+      if (!r.success) {
+        console.log(`Token eșuat [${i}]: ${tokens[i].slice(0, 20)}... -> ${r.error?.code} ${r.error?.message}`);
+      }
+    });
+
     res.status(200).json({ success: true, successCount: response.successCount, failureCount: response.failureCount });
   } catch (e) {
+    console.log("Notify eroare fatală:", e.message);
     res.status(500).json({ error: e.message });
   }
 }
