@@ -31,6 +31,7 @@ import {
   QrCode,
   Ban,
   Crown,
+  Pencil,
 } from "lucide-react";
 import { db, auth, googleProvider, getMessagingIfSupported, VAPID_KEY } from "./firebase";
 import { ref, onValue, set, push, remove, get } from "firebase/database";
@@ -181,14 +182,14 @@ function fileToCompressedBase64(file) {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const maxW = 360;
+        const maxW = 280;
         const scale = Math.min(1, maxW / img.width);
         const canvas = document.createElement("canvas");
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.45));
+        resolve(canvas.toDataURL("image/jpeg", 0.35));
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -1310,6 +1311,15 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
     }
   }
 
+  async function editGroup({ name, photo }) {
+    try {
+      await set(ref(db, `groups/${groupId}/name`), name);
+      await set(ref(db, `groups/${groupId}/photo`), photo || null);
+    } catch (e) {
+      setErr("Nu am putut actualiza grupul: " + e.message);
+    }
+  }
+
   async function deleteGroup() {
     try {
       const memberUids = Object.keys(groupMembers);
@@ -1908,6 +1918,7 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
               setShowTrash(true);
             }}
             onDeleteGroup={deleteGroup}
+            onEditGroup={editGroup}
           />
         )}
         {showProfile && (
@@ -1953,10 +1964,12 @@ function GroupPanel({
   onOpenAbout,
   onOpenTrash,
   onDeleteGroup,
+  onEditGroup,
 }) {
   const [copied, setCopied] = useState(false);
   const [goalInput, setGoalInput] = useState(groupInfo.goal || "");
   const [showQR, setShowQR] = useState(false);
+  const [editGroupOpen, setEditGroupOpen] = useState(false);
 
   function copyCode() {
     try {
@@ -1971,11 +1984,23 @@ function GroupPanel({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-end sm:items-center justify-center animate-fadein">
       <div className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-5 pb-8 max-h-[88vh] overflow-y-auto animate-slideup shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">{groupInfo.name}</h2>
+          <div className="flex items-center gap-2">
+            <Avatar name={groupInfo.name} size={10} photo={groupInfo.photo} />
+            <h2 className="text-xl font-bold">{groupInfo.name}</h2>
+            {isAdmin && (
+              <button onClick={() => setEditGroupOpen(true)} className="text-gray-400 hover:text-amber-500 p-1">
+                <Pencil size={15} />
+              </button>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-400">
             <X size={20} />
           </button>
         </div>
+
+        {editGroupOpen && (
+          <EditGroupModal groupInfo={groupInfo} onSave={onEditGroup} onClose={() => setEditGroupOpen(false)} />
+        )}
 
         <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Cod de invitație</p>
         <div className="flex items-center gap-2 mb-2">
@@ -2220,6 +2245,63 @@ function DeleteGroupZone({ groupName, onDelete }) {
         >
           Renunță
         </button>
+      </div>
+    </div>
+  );
+}
+
+function EditGroupModal({ groupInfo, onSave, onClose }) {
+  const [name, setName] = useState(groupInfo.name);
+  const [photo, setPhoto] = useState(groupInfo.photo || null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (file) setPhoto(await fileToCompressedBase64(file));
+  }
+
+  async function handleSave() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    await onSave({ name: name.trim(), photo });
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 dark:text-gray-100 rounded-2xl p-5 w-full max-w-sm shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-bold mb-4">Editează grupul</h3>
+        <div className="flex justify-center mb-4">
+          <label className="cursor-pointer relative">
+            <Avatar name={name || groupInfo.name} size={20} photo={photo} />
+            <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white rounded-full p-1">
+              <Camera size={12} />
+            </div>
+            <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </label>
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2.5 mb-4 dark:bg-gray-800"
+          placeholder="Numele grupului"
+        />
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 font-medium">
+            Anulează
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white font-medium disabled:opacity-50"
+          >
+            {saving ? "Salvez..." : "Salvează"}
+          </button>
+        </div>
       </div>
     </div>
   );
