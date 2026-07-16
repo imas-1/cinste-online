@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { db, auth, googleProvider, getMessagingIfSupported, VAPID_KEY } from "./firebase";
 import { ref, onValue, set, push, remove, get } from "firebase/database";
-import { getToken } from "firebase/messaging";
+import { getToken, onMessage } from "firebase/messaging";
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -1219,6 +1219,32 @@ function GroupApp({ user, groupId, theme, setTheme, onSwitchGroup }) {
   useEffect(() => {
     setNotifOn(loadLS(`cinsteNotif:${user.uid}`, false));
   }, [user.uid]);
+
+  useEffect(() => {
+    let unsub;
+    (async () => {
+      const messaging = await getMessagingIfSupported();
+      if (!messaging) return;
+      unsub = onMessage(messaging, async (payload) => {
+        const title = payload.notification?.title || "Caietul de cinste";
+        const body = payload.notification?.body || "";
+        playChime();
+        if (Notification.permission === "granted") {
+          try {
+            const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+            if (reg) {
+              reg.showNotification(title, { body, icon: "/icon.png", badge: "/icon.png" });
+            } else {
+              new Notification(title, { body, icon: "/icon.png" });
+            }
+          } catch (e) {}
+        }
+      });
+    })();
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
   async function toggleNotif() {
     const next = !notifOn;
